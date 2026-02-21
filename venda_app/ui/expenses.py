@@ -15,7 +15,9 @@ from ..utils.validators import is_non_empty, is_non_negative_float
 
 
 class ExpensesFrame(ctk.CTkFrame):
-    CATEGORIES = ["COMPRA_ESTOQUE", "MARKETING", "FIXO", "INVESTIMENTO", "OUTROS"]
+    # ⚠️ Compra de estoque é registrada via Movimentações (stock_moves).
+    # A tela de Gastos fica apenas para despesas operacionais.
+    CATEGORIES = ["MARKETING", "FIXO", "INVESTIMENTO", "OUTROS"]
 
     def __init__(self, master, conn):
         super().__init__(master)

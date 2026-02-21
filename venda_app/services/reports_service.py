@@ -41,11 +41,13 @@ def get_financial_summary(conn: sqlite3.Connection, date_from: str, date_to: str
     revenue, cost, profit = cur.fetchone()
 
     # Soma os gastos no intervalo (tabela expenses)
+    # Compra de estoque NÃO entra aqui (é contabilizada via Movimentações).
     cur.execute(
         """
         SELECT COALESCE(SUM(amount), 0) AS expenses
         FROM expenses
         WHERE exp_date BETWEEN ? AND ?
+          AND UPPER(category) <> 'COMPRA_ESTOQUE'
         """,
         (date_from, date_to),
     )
