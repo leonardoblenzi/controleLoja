@@ -4,7 +4,16 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="625cbd3e-9dab-42cc-9fb1-45b39db2b18f" name="Changes" comment="" />
+    <list default="true" id="625cbd3e-9dab-42cc-9fb1-45b39db2b18f" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/venda_app/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/venda_app/db/app.db" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/db/app.db" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/venda_app/db/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/db/database.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/venda_app/db/repositories.py" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/db/repositories.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/venda_app/db/schema.sql" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/db/schema.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/venda_app/services/sales_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/services/sales_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/venda_app/ui/sales.py" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/ui/sales.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -17,6 +26,9 @@
       </list>
     </option>
   </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 6
 }</component>
@@ -25,16 +37,17 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Python.dashboard.executor&quot;: &quot;Run&quot;,
-    &quot;Python.main.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;C:/Users/Administrator/PycharmProjects/vendasAppChat&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.dashboard.executor": "Run",
+    "Python.main.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "git-widget-placeholder": "main",
+    "last_opened_file_path": "C:/Users/Administrator/PycharmProjects/vendasAppChat"
   }
-}</component>
+}]]></component>
   <component name="RunManager">
     <configuration name="main" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
       <module name="vendasAppChat" />

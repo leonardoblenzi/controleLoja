@@ -396,6 +396,56 @@ class VariantRepository:
         return cur.fetchone()
 
 
+    @staticmethod
+    def search_variants(conn: sqlite3.Connection, q: str, limit: int = 12, category_name: str | None = None):
+        """
+        Retorna sugestões de variantes por prefixo de SKU ou por texto (nome produto/valor).
+        Se category_name for informado, filtra pela categoria (case-insensitive).
+        """
+        q = (q or "").strip()
+        if not q:
+            return []
+
+        like = f"%{q}%"
+        qprefix = f"{q}%"
+
+        params = [like, like, like, qprefix, limit]
+
+        category_filter_sql = ""
+        if category_name and category_name.strip():
+            # filtro case-insensitive
+            category_filter_sql = " AND LOWER(c.name) = LOWER(?) "
+            params.insert(0, category_name.strip())  # entra antes dos likes
+
+        cur = conn.cursor()
+        cur.execute(
+            f"""
+            SELECT
+              v.id AS variant_id,
+              v.variant_sku,
+              p.name AS product_name,
+              COALESCE(p.variant_attribute_name, 'Variação') AS attr_name,
+              v.variant_value
+            FROM product_variants v
+            JOIN products p ON p.id = v.product_id
+            JOIN categories c ON c.id = p.category_id
+            WHERE
+              1=1
+              {category_filter_sql}
+              AND (
+                v.variant_sku LIKE ?
+                OR p.name LIKE ?
+                OR v.variant_value LIKE ?
+              )
+            ORDER BY
+              CASE WHEN v.variant_sku LIKE ? THEN 0 ELSE 1 END,
+              v.variant_sku
+            LIMIT ?
+            """,
+            params,
+        )
+        return cur.fetchall()
+
 # =========================
 # REPOSITÓRIO: VENDAS
 # =========================
@@ -408,12 +458,16 @@ class SaleRepository:
         cur.execute(
             """
             INSERT INTO sales (
-                sale_date, channel, order_ref, customer_name, notes,
+                sale_date, channel, status, order_ref, customer_name, notes,
+                packaging_enabled, packaging_volumes,
+                packaging_box_variant_id, packaging_env_variant_id,
                 total_gross, total_fees, total_discount, total_net,
                 total_cost, total_profit
             )
             VALUES (
-                :sale_date, :channel, :order_ref, :customer_name, :notes,
+                :sale_date, :channel, :status, :order_ref, :customer_name, :notes,
+                :packaging_enabled, :packaging_volumes,
+                :packaging_box_variant_id, :packaging_env_variant_id,
                 :total_gross, :total_fees, :total_discount, :total_net,
                 :total_cost, :total_profit
             )
@@ -441,6 +495,46 @@ class SaleRepository:
         )
         conn.commit()
         return cur.lastrowid
+
+    @staticmethod
+    def get_sale_by_id(conn: sqlite3.Connection, sale_id: int) -> Optional[sqlite3.Row]:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT *
+              FROM sales
+             WHERE id = ?
+            """,
+            (sale_id,),
+        )
+        return cur.fetchone()
+
+    @staticmethod
+    def list_recent_sales(conn: sqlite3.Connection, limit: int = 50) -> List[sqlite3.Row]:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, sale_date, channel, status, order_ref, customer_name,
+                   total_net, total_profit, created_at
+              FROM sales
+             ORDER BY id DESC
+             LIMIT ?
+            """,
+            (int(limit),),
+        )
+        return cur.fetchall()
+
+    @staticmethod
+    def update_sale_status(conn: sqlite3.Connection, sale_id: int, status: str) -> None:
+        conn.execute(
+            """
+            UPDATE sales
+               SET status = ?
+             WHERE id = ?
+            """,
+            (status, sale_id),
+        )
+        conn.commit()
 
 
 # =========================
@@ -487,92 +581,6 @@ class ExpenseRepository:
         )
         conn.commit()
         return cur.lastrowid
-
-
-class VariantRepository:
-    @staticmethod
-    def search_variants(conn: sqlite3.Connection, q: str, limit: int = 12):
-        """
-        Retorna sugestões de variantes por:
-        - prefixo/trecho de SKU
-        - nome do produto
-        - valor da variação (ex: Preto, Rosa)
-        """
-        q = (q or "").strip()
-        if not q:
-            return []
-
-        like = f"%{q}%"
-
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT
-              v.id AS variant_id,
-              v.variant_sku,
-              p.name AS product_name,
-              COALESCE(p.variant_attribute_name, 'Variação') AS attr_name,
-              v.variant_value
-            FROM product_variants v
-            JOIN products p ON p.id = v.product_id
-            WHERE
-              v.variant_sku LIKE ?
-              OR p.name LIKE ?
-              OR v.variant_value LIKE ?
-            ORDER BY
-              CASE WHEN v.variant_sku LIKE ? THEN 0 ELSE 1 END,
-              v.variant_sku
-            LIMIT ?
-            """,
-            (like, like, like, f"{q}%", limit),
-        )
-        return cur.fetchall()
-
-    @staticmethod
-    def get_variant_by_sku(conn: sqlite3.Connection, sku: str):
-        """
-        Busca UMA variante pelo SKU exato.
-        Retorna sqlite3.Row com (variant_id, variant_sku, product_name, attr_name, variant_value)
-        ou None.
-        """
-        sku = (sku or "").strip()
-        if not sku:
-            return None
-
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT
-              v.id AS variant_id,
-              v.variant_sku,
-              p.name AS product_name,
-              COALESCE(p.variant_attribute_name, 'Variação') AS attr_name,
-              v.variant_value
-            FROM product_variants v
-            JOIN products p ON p.id = v.product_id
-            WHERE v.variant_sku = ?
-            """,
-            (sku,),
-        )
-        return cur.fetchone()
-
-    @staticmethod
-    def get_variant_id_by_sku(conn: sqlite3.Connection, sku: str):
-        """
-        Versão enxuta pra validação:
-        retorna somente o id da variante (int) ou None.
-        """
-        sku = (sku or "").strip()
-        if not sku:
-            return None
-
-        cur = conn.cursor()
-        cur.execute(
-            "SELECT id FROM product_variants WHERE variant_sku = ?",
-            (sku,),
-        )
-        row = cur.fetchone()
-        return int(row["id"]) if row else None
 
 __all__ = [
     "Category",

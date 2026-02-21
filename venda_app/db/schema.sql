@@ -66,16 +66,23 @@ CREATE TABLE IF NOT EXISTS sales (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   sale_date TEXT NOT NULL,
   channel TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'A_ENVIAR',
   order_ref TEXT,
   customer_name TEXT,
   notes TEXT,
+  packaging_enabled INTEGER NOT NULL DEFAULT 0,
+  packaging_volumes INTEGER NOT NULL DEFAULT 1,
+  packaging_box_variant_id INTEGER,
+  packaging_env_variant_id INTEGER,
   total_gross REAL NOT NULL DEFAULT 0,
   total_fees REAL NOT NULL DEFAULT 0,
   total_discount REAL NOT NULL DEFAULT 0,
   total_net REAL NOT NULL DEFAULT 0,
   total_cost REAL NOT NULL DEFAULT 0,
   total_profit REAL NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (packaging_box_variant_id) REFERENCES product_variants(id),
+  FOREIGN KEY (packaging_env_variant_id) REFERENCES product_variants(id)
 );
 
 -- Itens de cada venda (por variação)

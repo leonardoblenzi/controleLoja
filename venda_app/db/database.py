@@ -59,6 +59,28 @@ def init_db(schema_path: Optional[Path] = None) -> None:
     try:
         conn.executescript(script)
         conn.commit()
+
+        # Migrações leves (ALTER TABLE) para bancos já existentes
+        # Obs: para mudanças estruturais grandes, prefira recriar app.db
+        def _col_exists(table: str, col: str) -> bool:
+            cur = conn.execute(f"PRAGMA table_info({table})")
+            return any(r[1] == col for r in cur.fetchall())
+
+        # sales.status
+        if not _col_exists("sales", "status"):
+            conn.execute("ALTER TABLE sales ADD COLUMN status TEXT NOT NULL DEFAULT 'A_ENVIAR'")
+
+        # campos de embalagem
+        if not _col_exists("sales", "packaging_enabled"):
+            conn.execute("ALTER TABLE sales ADD COLUMN packaging_enabled INTEGER NOT NULL DEFAULT 0")
+        if not _col_exists("sales", "packaging_volumes"):
+            conn.execute("ALTER TABLE sales ADD COLUMN packaging_volumes INTEGER NOT NULL DEFAULT 1")
+        if not _col_exists("sales", "packaging_box_variant_id"):
+            conn.execute("ALTER TABLE sales ADD COLUMN packaging_box_variant_id INTEGER")
+        if not _col_exists("sales", "packaging_env_variant_id"):
+            conn.execute("ALTER TABLE sales ADD COLUMN packaging_env_variant_id INTEGER")
+
+        conn.commit()
     finally:
         conn.close()
 
