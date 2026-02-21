@@ -562,6 +562,33 @@ class StockMoveRepository:
         conn.commit()
         return cur.lastrowid
 
+    @staticmethod
+    def update_stock_move(conn: sqlite3.Connection, move_id: int, move_data: Dict[str, Any]) -> None:
+        """Atualiza um movimento existente."""
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE stock_moves
+               SET move_date = :move_date,
+                   variant_id = :variant_id,
+                   move_type = :move_type,
+                   reason = :reason,
+                   qty = :qty,
+                   unit_cost = :unit_cost,
+                   notes = :notes
+             WHERE id = :id
+            """,
+            {"id": move_id, **move_data},
+        )
+        conn.commit()
+
+    @staticmethod
+    def delete_stock_move(conn: sqlite3.Connection, move_id: int) -> None:
+        """Remove um movimento."""
+        cur = conn.cursor()
+        cur.execute("DELETE FROM stock_moves WHERE id = ?", (move_id,))
+        conn.commit()
+
 
 # =========================
 # REPOSITÓRIO: GASTOS

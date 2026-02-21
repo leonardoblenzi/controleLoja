@@ -270,7 +270,10 @@ class ProductsFrame(ctk.CTkFrame):
         # abre um mini prompt simples
         win = ctk.CTkToplevel(self)
         win.title("Adicionar variação")
-        win.geometry("460x220")
+        # Um pouco maior para não abrir "cortado" (sem precisar expandir manualmente)
+        win.geometry("480x300")
+        win.minsize(480, 300)
+        win.resizable(False, False)
         win.transient(self.winfo_toplevel())
         win.grab_set()
 

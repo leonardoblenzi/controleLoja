@@ -6,7 +6,7 @@ financeiros, como a Demonstração de Resultados (DRE) simples por
 período. As implementações são esboços e podem ser expandidas.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict
 import sqlite3
 
 
@@ -40,7 +40,7 @@ def get_financial_summary(conn: sqlite3.Connection, date_from: str, date_to: str
     )
     revenue, cost, profit = cur.fetchone()
 
-    # Soma os gastos no intervalo
+    # Soma os gastos no intervalo (tabela expenses)
     cur.execute(
         """
         SELECT COALESCE(SUM(amount), 0) AS expenses
@@ -51,12 +51,27 @@ def get_financial_summary(conn: sqlite3.Connection, date_from: str, date_to: str
     )
     expenses = cur.fetchone()[0]
 
-    result = profit - expenses
+    # Compras registradas via movimentações (IN + COMPRA) contam como gasto
+    cur.execute(
+        """
+        SELECT COALESCE(SUM(qty * unit_cost), 0) AS purchases
+          FROM stock_moves
+         WHERE move_type = 'IN'
+           AND UPPER(reason) = 'COMPRA'
+           AND move_date BETWEEN ? AND ?
+        """,
+        (date_from, date_to),
+    )
+    purchases = cur.fetchone()[0]
+
+    expenses_total = float(expenses) + float(purchases)
+
+    result = float(profit) - expenses_total
     return {
         "revenue": revenue,
         "cost": cost,
         "profit": profit,
-        "expenses": expenses,
+        "expenses": expenses_total,
         "result": result,
     }
 

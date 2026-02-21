@@ -64,5 +64,9 @@ class FinanceFrame(ctk.CTkFrame):
             "Gastos": summary["expenses"],
             "Resultado": summary["result"],
         }
+
+        def brl(x: float) -> str:
+            return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
         for key, value in mapping.items():
-            self.result_labels[key].configure(text=f"{key}: {value:,.2f}".replace(",", "."))
+            self.result_labels[key].configure(text=f"{key}: {brl(float(value))}")

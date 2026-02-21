@@ -6,13 +6,12 @@
   <component name="ChangeListManager">
     <list default="true" id="625cbd3e-9dab-42cc-9fb1-45b39db2b18f" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/venda_app/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/venda_app/db/app.db" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/db/app.db" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/venda_app/db/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/db/database.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/venda_app/db/repositories.py" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/db/repositories.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/venda_app/db/schema.sql" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/db/schema.sql" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/venda_app/services/sales_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/services/sales_service.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/venda_app/ui/sales.py" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/ui/sales.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/venda_app/services/reports_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/services/reports_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/venda_app/ui/dashboard.py" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/ui/dashboard.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/venda_app/ui/finance.py" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/ui/finance.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/venda_app/ui/moves.py" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/ui/moves.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/venda_app/ui/products.py" beforeDir="false" afterPath="$PROJECT_DIR$/venda_app/ui/products.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

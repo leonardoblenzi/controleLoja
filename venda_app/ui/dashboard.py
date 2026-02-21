@@ -225,6 +225,21 @@ class DashboardFrame(ctk.CTkFrame):
         exp = cur.fetchone()
         expenses = float(exp["expenses"]) if exp else 0.0
 
+        # Compras via movimentações (IN + COMPRA) entram como gasto
+        cur.execute(
+            """
+            SELECT COALESCE(SUM(qty * unit_cost), 0) AS purchases
+              FROM stock_moves
+             WHERE move_type = 'IN'
+               AND UPPER(reason) = 'COMPRA'
+               AND move_date BETWEEN ? AND ?
+            """,
+            (month_start, today_str),
+        )
+        prow = cur.fetchone()
+        purchases = float(prow["purchases"]) if prow else 0.0
+        expenses_total = expenses + purchases
+
         # Produtos abaixo do mínimo (estoque total por produto)
         stock_by_product = get_product_stock_levels(self.conn)
         cur.execute("SELECT id, stock_min FROM products WHERE is_active = 1")
@@ -239,6 +254,6 @@ class DashboardFrame(ctk.CTkFrame):
             return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
         self.kpi_widgets["💰 Receita líquida (mês)"].configure(text=brl(revenue))
-        self.kpi_widgets["🧾 Gastos (mês)"].configure(text=brl(expenses))
+        self.kpi_widgets["🧾 Gastos (mês)"].configure(text=brl(expenses_total))
         self.kpi_widgets["📈 Lucro (mês)"].configure(text=brl(profit))
         self.kpi_widgets["⚠️ Abaixo do mínimo"].configure(text=str(low))
