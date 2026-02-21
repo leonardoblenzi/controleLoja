@@ -11,7 +11,7 @@ from tkinter import ttk, messagebox
 from datetime import date
 
 from ..db.repositories import ExpenseRepository
-from ..utils.validators import is_non_empty, is_non_negative_float
+from ..utils.validators import is_non_empty, is_non_negative_float, parse_flexible_date, format_iso_to_br
 
 
 class ExpensesFrame(ctk.CTkFrame):
@@ -30,10 +30,10 @@ class ExpensesFrame(ctk.CTkFrame):
         form_frame.pack(fill="x", padx=10, pady=10)
 
         # Data
-        ctk.CTkLabel(form_frame, text="Data (YYYY-MM-DD):").grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(form_frame, text="Data:").grid(row=0, column=0, sticky="w")
         self.date_entry = ctk.CTkEntry(form_frame)
         self.date_entry.grid(row=0, column=1, padx=5, pady=5)
-        self.date_entry.insert(0, date.today().isoformat())
+        self.date_entry.insert(0, format_iso_to_br(date.today().isoformat()))
 
         # Categoria
         ctk.CTkLabel(form_frame, text="Categoria:").grid(row=0, column=2, sticky="w")
@@ -88,7 +88,11 @@ class ExpensesFrame(ctk.CTkFrame):
         self.tree.pack(fill="both", expand=True, padx=10, pady=10)
 
     def save_expense(self):
-        exp_date = self.date_entry.get().strip()
+        try:
+            exp_date = parse_flexible_date(self.date_entry.get().strip())
+        except Exception as e:
+            messagebox.showwarning("Data", str(e))
+            return
         category = self.category_var.get()
         description = self.desc_entry.get().strip()
         amount = self.amount_entry.get().strip()
@@ -116,7 +120,7 @@ class ExpensesFrame(ctk.CTkFrame):
 
     def clear_form(self):
         self.date_entry.delete(0, tk.END)
-        self.date_entry.insert(0, date.today().isoformat())
+        self.date_entry.insert(0, format_iso_to_br(date.today().isoformat()))
         self.desc_entry.delete(0, tk.END)
         self.amount_entry.delete(0, tk.END)
         self.payment_entry.delete(0, tk.END)
@@ -138,5 +142,5 @@ class ExpensesFrame(ctk.CTkFrame):
             self.tree.insert(
                 "",
                 "end",
-                values=(exp_date, category, desc, f"{amount:.2f}", payment or "", notes or ""),
+                values=(format_iso_to_br(exp_date), category, desc, f"{amount:.2f}", payment or "", notes or ""),
             )

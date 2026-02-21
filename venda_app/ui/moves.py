@@ -11,8 +11,14 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import date
 
-from ..db.repositories import StockMoveRepository, VariantRepository
-from ..utils.validators import is_non_empty, is_positive_integer, is_non_negative_float
+from ..db.repositories import StockMoveRepository, VariantRepository, ProductRepository
+from ..utils.validators import (
+    is_non_empty,
+    is_positive_integer,
+    is_non_negative_float,
+    parse_flexible_date,
+    format_iso_to_br,
+)
 
 from .autocomplete import AutocompleteEntry
 
@@ -37,10 +43,10 @@ class MovesFrame(ctk.CTkFrame):
         form_frame.pack(fill="x", padx=10, pady=10)
 
         # Data
-        ctk.CTkLabel(form_frame, text="Data (YYYY-MM-DD):").grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(form_frame, text="Data:").grid(row=0, column=0, sticky="w")
         self.date_entry = ctk.CTkEntry(form_frame)
         self.date_entry.grid(row=0, column=1, padx=5, pady=5)
-        self.date_entry.insert(0, date.today().isoformat())
+        self.date_entry.insert(0, format_iso_to_br(date.today().isoformat()))
 
         # Tipo
         ctk.CTkLabel(form_frame, text="Tipo:").grid(row=0, column=2, sticky="w")
@@ -139,7 +145,12 @@ class MovesFrame(ctk.CTkFrame):
 
     def add_or_update_move(self):
         """Valida e adiciona/atualiza um movimento."""
-        move_date = self.date_entry.get().strip()
+        # Aceita vários formatos e grava no banco em ISO
+        try:
+            move_date = parse_flexible_date(self.date_entry.get().strip())
+        except Exception as e:
+            messagebox.showwarning("Data", str(e))
+            return
         move_type = self.type_var.get()
         reason = self.reason_var.get()
         sku = self.sku_entry.get().strip()
@@ -184,6 +195,14 @@ class MovesFrame(ctk.CTkFrame):
             StockMoveRepository.update_stock_move(self.conn, int(self.editing_move_id), move_data)
             messagebox.showinfo("Movimentação", "Movimento atualizado com sucesso!")
 
+        # Atualiza custo do produto/variação quando for COMPRA (entrada)
+        if move_type == "IN" and str(reason).strip().upper() == "COMPRA":
+            try:
+                ProductRepository.apply_purchase_cost_from_variant(self.conn, variant_id, float(unit_cost))
+            except Exception:
+                # não bloqueia o fluxo da movimentação
+                pass
+
         self.clear_form()
         self.load_moves()
 
@@ -191,7 +210,7 @@ class MovesFrame(ctk.CTkFrame):
         self.editing_move_id = None
         self.add_button.configure(text="Registrar")
         self.date_entry.delete(0, tk.END)
-        self.date_entry.insert(0, date.today().isoformat())
+        self.date_entry.insert(0, format_iso_to_br(date.today().isoformat()))
         self.sku_entry.delete(0, tk.END)
         self.qty_entry.delete(0, tk.END)
         self.total_cost_entry.delete(0, tk.END)
@@ -234,7 +253,7 @@ class MovesFrame(ctk.CTkFrame):
 
         # Preenche formulário
         self.date_entry.delete(0, tk.END)
-        self.date_entry.insert(0, row["move_date"])
+        self.date_entry.insert(0, format_iso_to_br(row["move_date"]))
 
         self.type_var.set(row["move_type"])
         self.on_type_change(row["move_type"])
@@ -261,7 +280,20 @@ class MovesFrame(ctk.CTkFrame):
         if not messagebox.askyesno("Confirmar", "Deseja remover a movimentação selecionada?"):
             return
         try:
+            # Captura variant_id antes de remover
+            cur = self.conn.cursor()
+            cur.execute("SELECT variant_id FROM stock_moves WHERE id = ?", (int(move_id),))
+            r = cur.fetchone()
+            variant_id = int(r[0]) if r else None
+
             StockMoveRepository.delete_stock_move(self.conn, int(move_id))
+
+            # Recalcula custo com base na última compra registrada (se houver)
+            if variant_id is not None:
+                try:
+                    ProductRepository.recompute_purchase_costs(self.conn, variant_id)
+                except Exception:
+                    pass
         except Exception as e:
             messagebox.showerror("Erro", str(e))
             return
@@ -289,5 +321,5 @@ class MovesFrame(ctk.CTkFrame):
                 "",
                 "end",
                 iid=str(move_id),
-                values=(move_date, move_type, reason, sku, qty, f"{float(unit_cost):.2f}", f"{total:.2f}"),
+                values=(format_iso_to_br(move_date), move_type, reason, sku, qty, f"{float(unit_cost):.2f}", f"{total:.2f}"),
             )

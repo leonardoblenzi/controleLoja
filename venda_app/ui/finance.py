@@ -8,7 +8,9 @@ financeiro, incluindo receita, custo, lucro, gastos e resultado final.
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox
-from datetime import date, timedelta
+from datetime import date
+
+from ..utils.validators import parse_flexible_date, format_iso_to_br
 
 from ..services.reports_service import get_financial_summary
 
@@ -24,17 +26,17 @@ class FinanceFrame(ctk.CTkFrame):
         form_frame.pack(fill="x", padx=10, pady=10)
 
         # Data inicial
-        ctk.CTkLabel(form_frame, text="De (YYYY-MM-DD):").grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(form_frame, text="De:").grid(row=0, column=0, sticky="w")
         self.from_entry = ctk.CTkEntry(form_frame)
         self.from_entry.grid(row=0, column=1, padx=5, pady=5)
         first_day = date.today().replace(day=1)
-        self.from_entry.insert(0, first_day.isoformat())
+        self.from_entry.insert(0, format_iso_to_br(first_day.isoformat()))
 
         # Data final
-        ctk.CTkLabel(form_frame, text="Até (YYYY-MM-DD):").grid(row=0, column=2, sticky="w")
+        ctk.CTkLabel(form_frame, text="Até:").grid(row=0, column=2, sticky="w")
         self.to_entry = ctk.CTkEntry(form_frame)
         self.to_entry.grid(row=0, column=3, padx=5, pady=5)
-        self.to_entry.insert(0, date.today().isoformat())
+        self.to_entry.insert(0, format_iso_to_br(date.today().isoformat()))
 
         # Botão calcular
         calc_btn = ctk.CTkButton(form_frame, text="Calcular", command=self.calculate)
@@ -50,8 +52,17 @@ class FinanceFrame(ctk.CTkFrame):
             self.result_labels[key] = lbl
 
     def calculate(self):
-        date_from = self.from_entry.get().strip()
-        date_to = self.to_entry.get().strip()
+        try:
+            date_from = parse_flexible_date(self.from_entry.get().strip())
+            date_to = parse_flexible_date(self.to_entry.get().strip())
+            # mantém exibindo em BR
+            self.from_entry.delete(0, tk.END)
+            self.from_entry.insert(0, format_iso_to_br(date_from))
+            self.to_entry.delete(0, tk.END)
+            self.to_entry.insert(0, format_iso_to_br(date_to))
+        except Exception as e:
+            messagebox.showwarning("Data", str(e))
+            return
         try:
             summary = get_financial_summary(self.conn, date_from, date_to)
         except Exception as e:

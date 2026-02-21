@@ -19,7 +19,13 @@ from tkinter import ttk, messagebox
 
 from ..db.repositories import VariantRepository, SaleRepository
 from ..services.sales_service import create_sale, cancel_sale, update_sale_status
-from ..utils.validators import is_non_empty, is_positive_integer, is_non_negative_float
+from ..utils.validators import (
+    is_non_empty,
+    is_positive_integer,
+    is_non_negative_float,
+    parse_flexible_date,
+    format_iso_to_br,
+)
 from .autocomplete import AutocompleteEntry
 
 
@@ -42,10 +48,10 @@ class SalesFrame(ctk.CTkFrame):
         form_frame = ctk.CTkFrame(self)
         form_frame.pack(fill="x", padx=10, pady=10)
 
-        ctk.CTkLabel(form_frame, text="Data (YYYY-MM-DD):").grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(form_frame, text="Data:").grid(row=0, column=0, sticky="w")
         self.date_entry = ctk.CTkEntry(form_frame)
         self.date_entry.grid(row=0, column=1, padx=5, pady=5)
-        self.date_entry.insert(0, date.today().isoformat())
+        self.date_entry.insert(0, format_iso_to_br(date.today().isoformat()))
 
         ctk.CTkLabel(form_frame, text="Canal:").grid(row=0, column=2, sticky="w")
         self.channel_var = tk.StringVar(value=self.CHANNEL_OPTIONS[0])
@@ -255,7 +261,11 @@ class SalesFrame(ctk.CTkFrame):
     # ======================
 
     def save_sale(self):
-        sale_date = self.date_entry.get().strip()
+        try:
+            sale_date = parse_flexible_date(self.date_entry.get().strip())
+        except Exception as e:
+            messagebox.showwarning("Data", str(e))
+            return
         channel = self.channel_var.get()
         status = self.status_var.get() or "A_ENVIAR"
         ref = self.ref_entry.get().strip()
@@ -305,7 +315,7 @@ class SalesFrame(ctk.CTkFrame):
 
     def clear_form(self):
         self.date_entry.delete(0, tk.END)
-        self.date_entry.insert(0, date.today().isoformat())
+        self.date_entry.insert(0, format_iso_to_br(date.today().isoformat()))
         self.status_var.set("A_ENVIAR")
         self.ref_entry.delete(0, tk.END)
         self.customer_entry.delete(0, tk.END)
@@ -336,7 +346,7 @@ class SalesFrame(ctk.CTkFrame):
                 iid=str(r["id"]),
                 values=(
                     r["id"],
-                    r["sale_date"],
+                    format_iso_to_br(r["sale_date"]),
                     r["channel"],
                     r["status"],
                     r["order_ref"] or "",

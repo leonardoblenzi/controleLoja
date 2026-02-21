@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from datetime import date
 
 import customtkinter as ctk
 import tkinter as tk
@@ -209,6 +210,16 @@ class ProductsFrame(ctk.CTkFrame):
         )
         self.btn_clear.pack(side="left", padx=6, pady=6)
 
+        self.btn_delete = ctk.CTkButton(
+            btns,
+            text="Excluir",
+            command=self.delete_product,
+            width=140,
+            fg_color="#8a2b2b",
+            hover_color="#a83a3a",
+        )
+        self.btn_delete.pack(side="left", padx=6, pady=6)
+
         self.btn_refresh = ctk.CTkButton(
             btns,
             text="Atualizar categorias",
@@ -257,6 +268,17 @@ class ProductsFrame(ctk.CTkFrame):
             self.variants_tree.delete(iid)
         self.variant_rows.clear()
 
+    def _reload_variants_from_db(self, product_id: int):
+        """Recarrega o editor de variações a partir do DB para o produto selecionado."""
+        self._clear_variants_editor()
+        variants = VariantRepository.list_variants_by_product(self.conn, product_id, only_active=False)
+        for v in variants:
+            if v.is_default or not v.is_active:
+                continue
+            self.variant_rows.append({"id": int(v.id), "value": v.variant_value, "sku": v.variant_sku, "stock_initial": 0})
+            # iid = id da variação para permitir excluir diretamente
+            self.variants_tree.insert("", "end", iid=str(v.id), values=(v.variant_value, v.variant_sku, 0))
+
     def _add_variant_row(self):
         if not self.has_variants_var.get():
             messagebox.showinfo("Variações", "Marque 'Este produto tem variações' primeiro.")
@@ -296,13 +318,73 @@ class ProductsFrame(ctk.CTkFrame):
                 messagebox.showwarning("Variação", "Informe o valor da variação.")
                 return
             vsku = sku_entry.get().strip()
-            if not vsku:
+            # SKU vazio: gerar automaticamente e garantir unicidade
+            if not vsku and self.selected_product_id is not None:
+                vsku = VariantRepository.generate_unique_variant_sku(self.conn, sku_base, value)
+            elif not vsku:
                 vsku = f"{sku_base}-{_slug(value)}"
             stock_init = stock_entry.get().strip() or "0"
             if stock_init and not stock_init.isdigit():
                 messagebox.showwarning("Estoque", "Estoque inicial deve ser um inteiro >= 0")
                 return
 
+            # Se o usuário digitou SKU manualmente, validar conflito antes de tentar inserir
+            if self.selected_product_id is not None and vsku and VariantRepository.variant_sku_exists(self.conn, vsku):
+                messagebox.showwarning(
+                    "SKU já existe",
+                    "Já existe uma variação com esse SKU.\n\nDeixe o campo em branco para gerar automaticamente ou informe outro SKU.",
+                )
+                return
+
+            # Se o produto já existe (está selecionado), salvar a variação direto no DB.
+            # Isso evita perder a variação quando a UI recarrega a seleção do produto.
+            if self.selected_product_id is not None:
+                try:
+                    new_id = VariantRepository.add_variant(
+                        self.conn,
+                        ProductVariant(
+                            id=None,
+                            product_id=int(self.selected_product_id),
+                            variant_sku=vsku,
+                            variant_value=value,
+                            is_default=False,
+                            is_active=True,
+                        ),
+                    )
+
+                    si = int(stock_init)
+                    if si > 0:
+                        StockMoveRepository.insert_stock_move(
+                            self.conn,
+                            {
+                                "move_date": date.today().isoformat(),
+                                "variant_id": int(new_id),
+                                "move_type": "IN",
+                                "reason": "ESTOQUE_INICIAL",
+                                "qty": si,
+                                "unit_cost": 0.0,
+                                "ref_type": "MANUAL",
+                                "ref_id": None,
+                                "notes": "Estoque inicial via Produtos",
+                            },
+                        )
+
+                    self._reload_variants_from_db(int(self.selected_product_id))
+                    win.destroy()
+                    return
+                except Exception as e:
+                    # Erro comum: SKU duplicado (constraint UNIQUE)
+                    msg = str(e)
+                    if "UNIQUE constraint failed" in msg and "product_variants.variant_sku" in msg:
+                        messagebox.showerror(
+                            "SKU duplicado",
+                            "Esse SKU de variação já existe.\n\nDica: deixe o campo 'SKU da variação' em branco para gerar automaticamente um SKU único.",
+                        )
+                    else:
+                        messagebox.showerror("Erro ao adicionar variação", msg)
+                    return
+
+            # Caso seja um produto novo (ainda não salvo), manter em memória até salvar.
             self.variant_rows.append({"value": value, "sku": vsku, "stock_initial": int(stock_init)})
             self.variants_tree.insert("", "end", values=(value, vsku, int(stock_init)))
             win.destroy()
@@ -316,8 +398,31 @@ class ProductsFrame(ctk.CTkFrame):
         sel = self.variants_tree.selection()
         if not sel:
             return
-        idx = self.variants_tree.index(sel[0])
-        self.variants_tree.delete(sel[0])
+
+        iid = sel[0]
+        # Se for uma variação existente no banco (iid numérico), desativamos no DB
+        if self.selected_product_id is not None and str(iid).isdigit():
+            vid = int(iid)
+            if self._variant_has_usage(vid):
+                messagebox.showwarning(
+                    "Variação",
+                    "Não é possível excluir esta variação porque ela já foi usada em vendas/movimentações.",
+                )
+                return
+            if not messagebox.askyesno("Confirmar", "Excluir esta variação?"):
+                return
+            try:
+                self._deactivate_variant(vid)
+            except Exception as e:
+                messagebox.showerror("Erro", str(e))
+                return
+            # recarrega lista de variações do produto selecionado
+            self._reload_variants_from_db(int(self.selected_product_id))
+            return
+
+        # Caso seja uma linha ainda "em edição" (antes de salvar)
+        idx = self.variants_tree.index(iid)
+        self.variants_tree.delete(iid)
         if 0 <= idx < len(self.variant_rows):
             del self.variant_rows[idx]
 
@@ -428,21 +533,19 @@ class ProductsFrame(ctk.CTkFrame):
 
         # carrega variações
         variants = VariantRepository.list_variants_by_product(self.conn, pid, only_active=False)
-        has_real_variants = any((not v.is_default) and v.is_active for v in variants)
-        self.has_variants_var.set(1 if has_real_variants else 0)
+        has_variants = bool(product.variant_attribute_name) or any((not v.is_default) and v.is_active for v in variants)
+        self.has_variants_var.set(1 if has_variants else 0)
 
         self.variant_attr_entry.delete(0, tk.END)
-        self.variant_attr_entry.insert(0, product.variant_attribute_name or ("Cor" if has_real_variants else ""))
+        self.variant_attr_entry.insert(0, product.variant_attribute_name or "")
 
         self._toggle_variants_block()
-        self._clear_variants_editor()
 
-        if has_real_variants:
-            for v in variants:
-                if v.is_default:
-                    continue
-                self.variant_rows.append({"value": v.variant_value, "sku": v.variant_sku, "stock_initial": 0})
-                self.variants_tree.insert("", "end", values=(v.variant_value, v.variant_sku, 0))
+        # Se o produto estiver no modo "com variações", carregamos as variações ativas do DB
+        if has_variants:
+            self._reload_variants_from_db(pid)
+        else:
+            self._clear_variants_editor()
 
         self.btn_save.configure(text="Atualizar")
 
@@ -574,33 +677,79 @@ class ProductsFrame(ctk.CTkFrame):
             )
             ProductRepository.update_product(self.conn, product)
 
-            # estratégia segura (sem deletar histórico):
-            # - desativa todas as variações NÃO default
-            # - se usuário marcou variações: cria novas ativas
-            # - se desmarcou: garante variação default ativa
+            # estratégia:
+            # - Se "com variações":
+            #     * desativa a variação default (Única) (mantém por histórico)
+            #     * faz UPSERT nas variações do editor (atualiza existentes, cria novas, desativa removidas)
+            # - Se "sem variações":
+            #     * desativa variações não-default
+            #     * garante uma variação default ativa com SKU do produto
             cur = self.conn.cursor()
-            cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ? AND is_default = 0", (product_id,))
-            self.conn.commit()
 
             if has_variants:
-                # desativa default também (mantém por histórico)
-                cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ? AND is_default = 1", (product_id,))
-                self.conn.commit()
+                # desativa default (mantém por histórico)
+                cur.execute(
+                    "UPDATE product_variants SET is_active = 0 WHERE product_id = ? AND is_default = 1",
+                    (product_id,),
+                )
+
+                # mapa do que existe hoje (ativas/não-default)
+                existing = VariantRepository.list_variants_by_product(self.conn, product_id, only_active=False)
+                existing_map = {int(v.id): v for v in existing if (not v.is_default)}
+
+                desired_ids: set[int] = set()
                 for row in self.variant_rows:
                     v_value = row["value"].strip()
                     v_sku = (row["sku"].strip() or f"{sku}-{_slug(v_value)}")
-                    v = ProductVariant(
-                        id=None,
-                        product_id=product_id,
-                        variant_sku=v_sku,
-                        variant_value=v_value,
-                        is_default=False,
-                        is_active=True,
-                    )
-                    VariantRepository.add_variant(self.conn, v)
+
+                    rid = row.get("id")
+                    if rid and str(rid).isdigit():
+                        vid = int(rid)
+                        desired_ids.add(vid)
+                        # atualiza
+                        VariantRepository.update_variant(
+                            self.conn,
+                            ProductVariant(
+                                id=vid,
+                                product_id=product_id,
+                                variant_sku=v_sku,
+                                variant_value=v_value,
+                                is_default=False,
+                                cost_override=None,
+                                price_override=None,
+                                is_active=True,
+                            ),
+                        )
+                    else:
+                        # cria nova
+                        VariantRepository.add_variant(
+                            self.conn,
+                            ProductVariant(
+                                id=None,
+                                product_id=product_id,
+                                variant_sku=v_sku,
+                                variant_value=v_value,
+                                is_default=False,
+                                is_active=True,
+                            ),
+                        )
+
+                # desativa as que foram removidas no editor (somente se não tiver uso)
+                for vid, v in existing_map.items():
+                    if vid in desired_ids:
+                        continue
+                    if self._variant_has_usage(vid):
+                        # mantém ativa para não quebrar histórico, mas avisa
+                        continue
+                    cur.execute("UPDATE product_variants SET is_active = 0 WHERE id = ?", (vid,))
+
+                self.conn.commit()
+
             else:
+                # desativa todas as variações não-default
+                cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ? AND is_default = 0", (product_id,))
+
                 # garante default ativo
-                # se existir, ativa; se não existir, cria
                 cur.execute(
                     "SELECT id FROM product_variants WHERE product_id = ? AND is_default = 1",
                     (product_id,),
@@ -608,7 +757,6 @@ class ProductsFrame(ctk.CTkFrame):
                 r = cur.fetchone()
                 if r:
                     cur.execute("UPDATE product_variants SET is_active = 1, variant_sku = ? WHERE id = ?", (sku, r["id"]))
-                    self.conn.commit()
                 else:
                     VariantRepository.add_variant(
                         self.conn,
@@ -621,6 +769,7 @@ class ProductsFrame(ctk.CTkFrame):
                             is_active=True,
                         ),
                     )
+                self.conn.commit()
 
             messagebox.showinfo("Produto", "Produto atualizado!")
 
@@ -628,7 +777,68 @@ class ProductsFrame(ctk.CTkFrame):
         self.load_products()
         self.clear_product_form()
 
-    # ---------------- Categorias ----------------
+    
+    def delete_product(self):
+        if self.selected_product_id is None:
+            messagebox.showwarning("Produto", "Selecione um produto na lista.")
+            return
+        pid = int(self.selected_product_id)
+        sku = self.sku_entry.get().strip()
+        name = self.name_entry.get().strip()
+
+        if not messagebox.askyesno("Confirmar", f"Excluir o produto '{name}' ({sku})?"):
+            return
+
+        # Regra de segurança:
+        # - Se houver histórico (vendas/movimentos), não apagamos do banco: apenas INATIVAMOS.
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                (SELECT COUNT(1) FROM stock_moves sm JOIN product_variants v ON v.id = sm.variant_id WHERE v.product_id = ?) AS n_moves,
+                (SELECT COUNT(1) FROM sale_items si JOIN product_variants v2 ON v2.id = si.variant_id WHERE v2.product_id = ?) AS n_sales
+            """,
+            (pid, pid),
+        )
+        r = cur.fetchone()
+        n_moves = int(r["n_moves"])
+        n_sales = int(r["n_sales"])
+
+        try:
+            if n_moves == 0 and n_sales == 0:
+                ProductRepository.delete_product(self.conn, pid)
+                messagebox.showinfo("Produto", "Produto excluído.")
+            else:
+                # soft-delete (inativa)
+                cur.execute("UPDATE products SET is_active = 0 WHERE id = ?", (pid,))
+                # também inativa variações (mantém histórico íntegro)
+                cur.execute("UPDATE product_variants SET is_active = 0 WHERE product_id = ?", (pid,))
+                self.conn.commit()
+                messagebox.showinfo(
+                    "Produto",
+                    "Este produto possui histórico (vendas/movimentos) e não pode ser apagado.\nEle foi INATIVADO para não aparecer como ativo.",
+                )
+        except Exception as e:
+            messagebox.showerror("Erro", str(e))
+            return
+
+        self.load_products()
+        self.clear_product_form()
+
+    def _variant_has_usage(self, variant_id: int) -> bool:
+        cur = self.conn.cursor()
+        cur.execute("SELECT COUNT(1) AS n FROM stock_moves WHERE variant_id = ?", (variant_id,))
+        n1 = int(cur.fetchone()["n"])
+        cur.execute("SELECT COUNT(1) AS n FROM sale_items WHERE variant_id = ?", (variant_id,))
+        n2 = int(cur.fetchone()["n"])
+        return (n1 + n2) > 0
+
+    def _deactivate_variant(self, variant_id: int) -> None:
+        self.conn.execute("UPDATE product_variants SET is_active = 0 WHERE id = ?", (variant_id,))
+        self.conn.commit()
+
+
+# ---------------- Categorias ----------------
     def _build_categories_view(self):
         form = ctk.CTkFrame(self.categories_view)
         form.pack(fill="x", padx=10, pady=10)

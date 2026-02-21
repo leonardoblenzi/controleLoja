@@ -201,7 +201,21 @@ class ProductRepository:
             SELECT
                 p.id, p.sku, p.name, p.category_id, c.name AS category_name,
                 p.variant_attribute_name,
-                p.brand, p.cost_default, p.price_default, p.stock_min, p.is_active
+                p.brand,
+                COALESCE(
+                    (
+                        SELECT sm.unit_cost
+                          FROM stock_moves sm
+                          JOIN product_variants v ON v.id = sm.variant_id
+                         WHERE v.product_id = p.id
+                           AND sm.move_type = 'IN'
+                           AND UPPER(sm.reason) = 'COMPRA'
+                         ORDER BY sm.move_date DESC, sm.id DESC
+                         LIMIT 1
+                    ),
+                    p.cost_default
+                ) AS cost_default,
+                p.price_default, p.stock_min, p.is_active
               FROM products p
               JOIN categories c ON c.id = p.category_id
              ORDER BY p.name
@@ -236,6 +250,115 @@ class ProductRepository:
             stock_min=row["stock_min"],
             is_active=bool(row["is_active"]),
         )
+
+    # =========================
+    # CUSTO (derivado de compras)
+    # =========================
+
+    @staticmethod
+    def apply_purchase_cost_from_variant(conn: sqlite3.Connection, variant_id: int, unit_cost: float) -> None:
+        """Ao registrar uma COMPRA (IN), atualiza o custo padrão do produto e o override da variação."""
+        cur = conn.cursor()
+        cur.execute("SELECT product_id FROM product_variants WHERE id = ?", (int(variant_id),))
+        r = cur.fetchone()
+        if not r:
+            return
+        product_id = int(r[0])
+
+        # Atualiza custo do produto (campo exibido na tela de produtos)
+        conn.execute(
+            """
+            UPDATE products
+               SET cost_default = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (float(unit_cost), product_id),
+        )
+
+        # Atualiza custo da variação (opcional)
+        conn.execute(
+            """
+            UPDATE product_variants
+               SET cost_override = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (float(unit_cost), int(variant_id)),
+        )
+        conn.commit()
+
+    @staticmethod
+    def recompute_purchase_costs(conn: sqlite3.Connection, variant_id: int) -> None:
+        """Recalcula custo do produto/variação baseado na última COMPRA (IN) existente."""
+        cur = conn.cursor()
+        cur.execute("SELECT product_id FROM product_variants WHERE id = ?", (int(variant_id),))
+        r = cur.fetchone()
+        if not r:
+            return
+        product_id = int(r[0])
+
+        # Última compra dessa variação
+        cur.execute(
+            """
+            SELECT unit_cost
+              FROM stock_moves
+             WHERE variant_id = ?
+               AND move_type = 'IN'
+               AND UPPER(reason) = 'COMPRA'
+             ORDER BY move_date DESC, id DESC
+             LIMIT 1
+            """,
+            (int(variant_id),),
+        )
+        vr = cur.fetchone()
+        if vr:
+            unit_cost = float(vr[0])
+            conn.execute(
+                """
+                UPDATE product_variants
+                   SET cost_override = ?,
+                       updated_at = datetime('now')
+                 WHERE id = ?
+                """,
+                (unit_cost, int(variant_id)),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE product_variants
+                   SET cost_override = NULL,
+                       updated_at = datetime('now')
+                 WHERE id = ?
+                """,
+                (int(variant_id),),
+            )
+
+        # Última compra de qualquer variação do produto
+        cur.execute(
+            """
+            SELECT sm.unit_cost
+              FROM stock_moves sm
+              JOIN product_variants v ON v.id = sm.variant_id
+             WHERE v.product_id = ?
+               AND sm.move_type = 'IN'
+               AND UPPER(sm.reason) = 'COMPRA'
+             ORDER BY sm.move_date DESC, sm.id DESC
+             LIMIT 1
+            """,
+            (product_id,),
+        )
+        pr = cur.fetchone()
+        conn.execute(
+            """
+            UPDATE products
+               SET cost_default = ?,
+                   updated_at = datetime('now')
+             WHERE id = ?
+            """,
+            (float(pr[0]) if pr else 0.0, product_id),
+        )
+        conn.commit()
 
     @staticmethod
     def get_product_by_sku(conn: sqlite3.Connection, sku: str) -> Optional[Product]:
@@ -273,6 +396,37 @@ class ProductRepository:
 
 class VariantRepository:
     """CRUD de variações."""
+
+    @staticmethod
+    def variant_sku_exists(conn: sqlite3.Connection, variant_sku: str) -> bool:
+        """Verifica se já existe alguma variação com o SKU informado (globalmente)."""
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT 1 FROM product_variants WHERE variant_sku = ? LIMIT 1""",
+            (variant_sku.strip(),),
+        )
+        return cur.fetchone() is not None
+
+    @staticmethod
+    def _slug(text: str) -> str:
+        """Converte texto em um sufixo seguro para SKU."""
+        import re
+        import unicodedata
+
+        text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+        text = re.sub(r"[^A-Za-z0-9]+", "-", text).strip("-")
+        return text.upper() or "VAR"
+
+    @staticmethod
+    def generate_unique_variant_sku(conn: sqlite3.Connection, product_sku: str, variant_value: str) -> str:
+        """Gera um SKU de variação único. Se o padrão já existir, adiciona sufixo -2, -3..."""
+        base = f"{product_sku.strip()}-{VariantRepository._slug(variant_value)}"
+        candidate = base
+        n = 2
+        while VariantRepository.variant_sku_exists(conn, candidate):
+            candidate = f"{base}-{n}"
+            n += 1
+        return candidate
 
     @staticmethod
     def add_variant(conn: sqlite3.Connection, v: ProductVariant) -> int:

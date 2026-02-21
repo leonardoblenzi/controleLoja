@@ -9,9 +9,11 @@ placeholders.
 """
 
 import customtkinter as ctk
+import tkinter as tk
 from datetime import date
 
 from ..services.inventory_service import get_product_stock_levels
+from ..utils.validators import parse_flexible_date, format_iso_to_br
 
 from ..db.database import init_db, get_connection
 from .products import ProductsFrame
@@ -164,6 +166,26 @@ class DashboardFrame(ctk.CTkFrame):
             font=("Helvetica", 20, "bold"),
         ).pack(side="left", padx=10, pady=10)
 
+        # Filtros de período
+        self._from_var = tk.StringVar()
+        self._to_var = tk.StringVar()
+
+        today = date.today()
+        month_start = today.replace(day=1).isoformat()
+        self._from_var.set(format_iso_to_br(month_start))
+        self._to_var.set(format_iso_to_br(today.isoformat()))
+
+        period = ctk.CTkFrame(header, fg_color="transparent")
+        period.pack(side="right", padx=10, pady=10)
+
+        ctk.CTkLabel(period, text="De:").pack(side="left", padx=(0, 6))
+        self.from_entry = ctk.CTkEntry(period, width=120, textvariable=self._from_var)
+        self.from_entry.pack(side="left")
+
+        ctk.CTkLabel(period, text="Até:").pack(side="left", padx=(10, 6))
+        self.to_entry = ctk.CTkEntry(period, width=120, textvariable=self._to_var)
+        self.to_entry.pack(side="left")
+
         ctk.CTkButton(header, text="🔄 Atualizar", width=140, command=self.refresh).pack(side="right", padx=10, pady=10)
 
         self.cards = ctk.CTkFrame(self)
@@ -172,9 +194,9 @@ class DashboardFrame(ctk.CTkFrame):
         self.cards.grid_rowconfigure((0, 1), weight=0)
 
         self.kpi_widgets = {}
-        self._make_card(0, 0, "💰 Receita líquida (mês)", "0,00", "#1f6aa5")
-        self._make_card(0, 1, "🧾 Gastos (mês)", "0,00", "#6a1fa5")
-        self._make_card(1, 0, "📈 Lucro (mês)", "0,00", "#1f8a5a")
+        self._make_card(0, 0, "💰 Receita líquida", "0,00", "#1f6aa5")
+        self._make_card(0, 1, "🧾 Gastos", "0,00", "#6a1fa5")
+        self._make_card(1, 0, "📈 Lucro", "0,00", "#1f8a5a")
         self._make_card(1, 1, "⚠️ Abaixo do mínimo", "0", "#a56a1f")
 
         self.refresh()
@@ -193,9 +215,20 @@ class DashboardFrame(ctk.CTkFrame):
         self.kpi_widgets[title] = val_lbl
 
     def refresh(self):
-        today = date.today()
-        month_start = today.replace(day=1).isoformat()
-        today_str = today.isoformat()
+        # Período (aceita formatos variados, ex: 21/05/2000, 21-05-2000, 2000-05-21)
+        try:
+            date_from = parse_flexible_date(self.from_entry.get())
+            date_to = parse_flexible_date(self.to_entry.get())
+        except Exception:
+            # fallback: mês atual
+            today = date.today()
+            date_from = today.replace(day=1).isoformat()
+            date_to = today.isoformat()
+
+        # Mantém exibindo sempre em DD/MM/YYYY
+        self._from_var.set(format_iso_to_br(date_from))
+        self._to_var.set(format_iso_to_br(date_to))
+
         cur = self.conn.cursor()
 
         # Receita líquida e lucro
@@ -207,7 +240,7 @@ class DashboardFrame(ctk.CTkFrame):
             FROM sales
             WHERE sale_date BETWEEN ? AND ?
             """,
-            (month_start, today_str),
+            (date_from, date_to),
         )
         row = cur.fetchone()
         revenue = float(row["revenue"]) if row else 0.0
@@ -220,7 +253,7 @@ class DashboardFrame(ctk.CTkFrame):
             FROM expenses
             WHERE exp_date BETWEEN ? AND ?
             """,
-            (month_start, today_str),
+            (date_from, date_to),
         )
         exp = cur.fetchone()
         expenses = float(exp["expenses"]) if exp else 0.0
@@ -234,7 +267,7 @@ class DashboardFrame(ctk.CTkFrame):
                AND UPPER(reason) = 'COMPRA'
                AND move_date BETWEEN ? AND ?
             """,
-            (month_start, today_str),
+            (date_from, date_to),
         )
         prow = cur.fetchone()
         purchases = float(prow["purchases"]) if prow else 0.0
@@ -253,7 +286,7 @@ class DashboardFrame(ctk.CTkFrame):
         def brl(x: float) -> str:
             return f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-        self.kpi_widgets["💰 Receita líquida (mês)"].configure(text=brl(revenue))
-        self.kpi_widgets["🧾 Gastos (mês)"].configure(text=brl(expenses_total))
-        self.kpi_widgets["📈 Lucro (mês)"].configure(text=brl(profit))
+        self.kpi_widgets["💰 Receita líquida"].configure(text=brl(revenue))
+        self.kpi_widgets["🧾 Gastos"].configure(text=brl(expenses_total))
+        self.kpi_widgets["📈 Lucro"].configure(text=brl(profit))
         self.kpi_widgets["⚠️ Abaixo do mínimo"].configure(text=str(low))
